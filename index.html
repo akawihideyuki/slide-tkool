@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="YouTube通常動画・Shorts向けのスライド画像をブラウザで作るツール">
+  <title>Slide Tkool</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <strong>Slide Tkool</strong>
+        <span>YouTube Slide Maker</span>
+      </div>
+
+      <div class="topbar-group ratio-switch" role="group" aria-label="動画比率">
+        <button class="segmented is-active" data-ratio="landscape" type="button">16:9 通常</button>
+        <button class="segmented" data-ratio="portrait" type="button">9:16 Shorts</button>
+      </div>
+
+      <div class="topbar-group">
+        <button id="undoBtn" class="button ghost" type="button" title="元に戻す (Ctrl+Z)">↶</button>
+        <button id="redoBtn" class="button ghost" type="button" title="やり直す (Ctrl+Y)">↷</button>
+        <button id="saveProjectBtn" class="button ghost" type="button">JSON保存</button>
+        <label class="button ghost file-label">JSON読込<input id="loadProjectInput" type="file" accept="application/json,.json"></label>
+        <button id="exportCurrentBtn" class="button primary" type="button">PNG出力</button>
+        <button id="exportAllBtn" class="button" type="button">全PNG</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="sidebar slides-panel" aria-label="スライド一覧">
+        <div class="panel-header">
+          <div>
+            <span class="eyebrow">SLIDES</span>
+            <strong>スライド</strong>
+          </div>
+          <button id="addSlideBtn" class="icon-button" type="button" aria-label="スライドを追加">＋</button>
+        </div>
+        <div id="slideList" class="slide-list"></div>
+        <div class="sidebar-actions">
+          <button id="duplicateSlideBtn" class="button ghost grow" type="button">複製</button>
+          <button id="deleteSlideBtn" class="button danger-ghost" type="button">削除</button>
+        </div>
+      </aside>
+
+      <section class="editor-area">
+        <div class="editor-toolbar">
+          <div class="toolbar-cluster">
+            <button id="addTitleBtn" class="tool-button" type="button"><span>Ｔ</span>タイトル</button>
+            <button id="addTextBtn" class="tool-button" type="button"><span>¶</span>本文</button>
+            <label class="tool-button file-label"><span>▧</span>画像<input id="imageInput" type="file" accept="image/*"></label>
+            <button id="addShapeBtn" class="tool-button" type="button"><span>■</span>ボックス</button>
+          </div>
+          <div class="toolbar-cluster">
+            <label class="guide-toggle"><input id="guideToggle" type="checkbox" checked><span>安全領域ガイド</span></label>
+            <span id="canvasSizeLabel" class="canvas-size-label">1920 × 1080</span>
+          </div>
+        </div>
+
+        <div class="stage-wrap" id="stageWrap">
+          <div class="stage-shadow">
+            <canvas id="stageCanvas" width="1920" height="1080" tabindex="0" aria-label="スライド編集キャンバス"></canvas>
+          </div>
+          <p class="stage-hint">要素をクリックして選択・ドラッグで移動。矢印キーで微調整、Shift＋矢印で10px移動。</p>
+        </div>
+      </section>
+
+      <aside class="sidebar inspector-panel" aria-label="編集設定">
+        <section class="inspector-section">
+          <div class="panel-header compact">
+            <div>
+              <span class="eyebrow">LAYOUT</span>
+              <strong>テンプレート</strong>
+            </div>
+          </div>
+          <div id="templateGrid" class="template-grid">
+            <button class="template-card" data-template="title" type="button"><span class="template-preview title-only"></span><span>タイトル</span></button>
+            <button class="template-card" data-template="titleBody" type="button"><span class="template-preview title-body"></span><span>タイトル＋本文</span></button>
+            <button class="template-card" data-template="split" type="button"><span class="template-preview split"></span><span>文字＋画像</span></button>
+            <button class="template-card" data-template="caption" type="button"><span class="template-preview caption"></span><span>全面＋テロップ</span></button>
+          </div>
+        </section>
+
+        <section class="inspector-section">
+          <div class="panel-header compact">
+            <div>
+              <span class="eyebrow">BACKGROUND</span>
+              <strong>背景</strong>
+            </div>
+          </div>
+          <div class="field-row two-cols">
+            <label>色1<input id="bgColor1" type="color" value="#111827"></label>
+            <label>色2<input id="bgColor2" type="color" value="#1f2937"></label>
+          </div>
+          <label class="field-label">背景タイプ
+            <select id="bgType">
+              <option value="gradient">グラデーション</option>
+              <option value="solid">単色</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="inspector-section element-inspector">
+          <div class="panel-header compact">
+            <div>
+              <span class="eyebrow">ELEMENT</span>
+              <strong id="elementHeading">要素未選択</strong>
+            </div>
+          </div>
+
+          <div id="emptyInspector" class="empty-state">キャンバス上の文字・画像・ボックスを選択すると編集できます。</div>
+
+          <div id="textInspector" class="inspector-fields" hidden>
+            <label class="field-label">テキスト<textarea id="textContent" rows="4"></textarea></label>
+            <div class="field-row two-cols">
+              <label>文字サイズ<input id="fontSize" type="number" min="12" max="240" step="1"></label>
+              <label>文字色<input id="textColor" type="color"></label>
+            </div>
+            <div class="field-row two-cols">
+              <label>太さ<select id="fontWeight"><option value="400">標準</option><option value="600">中太</option><option value="700">太字</option><option value="900">極太</option></select></label>
+              <label>揃え<select id="textAlign"><option value="left">左</option><option value="center">中央</option><option value="right">右</option></select></label>
+            </div>
+          </div>
+
+          <div id="imageInspector" class="inspector-fields" hidden>
+            <label class="field-label">表示方法<select id="imageFit"><option value="cover">枠いっぱい</option><option value="contain">全体を表示</option></select></label>
+            <button id="replaceImageBtn" class="button ghost full" type="button">画像を差し替え</button>
+            <input id="replaceImageInput" type="file" accept="image/*" hidden>
+          </div>
+
+          <div id="shapeInspector" class="inspector-fields" hidden>
+            <div class="field-row two-cols">
+              <label>色<input id="shapeColor" type="color"></label>
+              <label>透明度<input id="shapeOpacity" type="range" min="0.05" max="1" step="0.05"></label>
+            </div>
+            <label class="field-label">角丸<input id="shapeRadius" type="number" min="0" max="160" step="2"></label>
+          </div>
+
+          <div id="commonInspector" class="inspector-fields" hidden>
+            <div class="field-row two-cols">
+              <label>X<input id="posX" type="number" step="1"></label>
+              <label>Y<input id="posY" type="number" step="1"></label>
+            </div>
+            <div class="field-row two-cols">
+              <label>幅<input id="elemW" type="number" min="10" step="1"></label>
+              <label>高さ<input id="elemH" type="number" min="10" step="1"></label>
+            </div>
+            <div class="layer-actions">
+              <button id="sendBackwardBtn" class="button ghost grow" type="button">背面へ</button>
+              <button id="bringForwardBtn" class="button ghost grow" type="button">前面へ</button>
+              <button id="deleteElementBtn" class="button danger-ghost" type="button">削除</button>
+            </div>
+          </div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
