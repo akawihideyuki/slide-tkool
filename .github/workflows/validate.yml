@@ -1,0 +1,29 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Check JavaScript syntax
+        run: |
+          node --check js/model.js
+          node --check js/renderer.js
+          node --check js/storage.js
+          node --check js/app.js
+          node --check js/resize.js
+          node --check tests/static-check.mjs
+
+      - name: Check HTML and JavaScript references
+        run: node tests/static-check.mjs
