@@ -13,7 +13,7 @@ import {
   slideDisplayName,
   uid,
 } from "./model.js";
-import { hitTest, pointToCanvas, renderSlide, renderThumbnail, slideToBlob } from "./renderer.js";
+import { hitTest, pointToCanvas, renderSlide, renderThumbnail, retainImageCache, slideToBlob } from "./renderer.js";
 import { loadAutosave, saveAutosave } from "./storage.js";
 
 const $ = (selector) => document.querySelector(selector);
@@ -26,6 +26,14 @@ const els = {
   canvasSizeLabel: $("#canvasSizeLabel"),
   guideToggle: $("#guideToggle"),
   toast: $("#toast"),
+  textOverflowWarning: $("#textOverflowWarning"),
+  undoBtn: $("#undoBtn"),
+  redoBtn: $("#redoBtn"),
+  slidesPanel: $("#slidesPanel"),
+  inspectorPanel: $("#inspectorPanel"),
+  panelBackdrop: $("#panelBackdrop"),
+  openSlidesPanelBtn: $("#openSlidesPanelBtn"),
+  openInspectorPanelBtn: $("#openInspectorPanelBtn"),
   elementHeading: $("#elementHeading"),
   emptyInspector: $("#emptyInspector"),
   textInspector: $("#textInspector"),
@@ -168,12 +176,28 @@ async function renderStage() {
   if (!slide) return;
   const size = getCanvasSize(project.ratio);
   fitStage();
-  await renderSlide(els.canvas, slide, size, {
-    selectedId,
-    showGuides: els.guideToggle.checked,
-    ratio: project.ratio,
-  });
-  if (serial !== renderSerial) return;
+  if (els.canvas.width !== size.width) els.canvas.width = size.width;
+  if (els.canvas.height !== size.height) els.canvas.height = size.height;
+
+  const buffer = document.createElement("canvas");
+  try {
+    const result = await renderSlide(buffer, slide, size, {
+      selectedId,
+      showGuides: els.guideToggle.checked,
+      showOverflowWarnings: true,
+      ratio: project.ratio,
+    });
+    if (serial !== renderSerial) return;
+    const ctx = els.canvas.getContext("2d", { alpha: false });
+    ctx.clearRect(0, 0, size.width, size.height);
+    ctx.drawImage(buffer, 0, 0);
+    const selectedTextOverflows = selectedElement()?.type === "text" && result.overflowTextIds.includes(selectedId);
+    els.textOverflowWarning.hidden = !selectedTextOverflows;
+  } catch (error) {
+    if (serial !== renderSerial) return;
+    console.error("Slide render failed:", error);
+    showToast("スライドの描画に失敗しました。読み込んだデータを確認してください。");
+  }
 }
 
 function renderSlideList() {
@@ -196,6 +220,7 @@ function renderSlideList() {
       renderSlideList();
       renderStage();
       syncControls();
+      if (window.matchMedia("(max-width: 900px)").matches) closeMobilePanels();
     });
     els.slideList.append(item);
     renderThumbnail(item.querySelector("canvas"), slide, size).catch(console.warn);
@@ -203,7 +228,11 @@ function renderSlideList() {
 }
 
 function syncRatioControls() {
-  $$("[data-ratio]").forEach((button) => button.classList.toggle("is-active", button.dataset.ratio === project.ratio));
+  $$("[data-ratio]").forEach((button) => {
+    const isActive = button.dataset.ratio === project.ratio;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
   const size = getCanvasSize(project.ratio);
   els.canvasSizeLabel.textContent = `${size.width} × ${size.height}`;
 }
@@ -228,6 +257,7 @@ function syncInspector() {
   const el = selectedElement();
   if (!el) {
     els.elementHeading.textContent = "要素未選択";
+    els.textOverflowWarning.hidden = true;
     setInspectorVisibility(null);
     return;
   }
@@ -240,14 +270,17 @@ function syncInspector() {
   els.elemH.value = Math.round(el.h);
 
   if (el.type === "text") {
+    els.textOverflowWarning.hidden = true;
     els.textContent.value = el.text ?? "";
     els.fontSize.value = Math.round(el.fontSize ?? 48);
     els.textColor.value = el.color || "#ffffff";
     els.fontWeight.value = String(el.fontWeight || "400");
     els.textAlign.value = el.align || "left";
   } else if (el.type === "image") {
+    els.textOverflowWarning.hidden = true;
     els.imageFit.value = el.fit || "cover";
   } else if (el.type === "shape") {
+    els.textOverflowWarning.hidden = true;
     els.shapeColor.value = el.color || "#111827";
     els.shapeOpacity.value = Number(el.opacity ?? .8);
     els.shapeRadius.value = Math.round(el.radius ?? 0);
@@ -258,9 +291,12 @@ function syncControls() {
   syncRatioControls();
   syncBackgroundControls();
   syncInspector();
+  els.undoBtn.disabled = history.length === 0;
+  els.redoBtn.disabled = future.length === 0;
 }
 
 function refreshAll() {
+  retainImageCache(project.slides.flatMap((slide) => slide.elements.filter((el) => el.type === "image").map((el) => el.src)));
   syncControls();
   renderSlideList();
   renderStage();
@@ -591,8 +627,41 @@ function isTypingTarget(target) {
   return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || target?.isContentEditable;
 }
 
+function closeMobilePanels({ restoreFocus = false } = {}) {
+  const openSlides = els.slidesPanel.classList.contains("is-open");
+  const openInspector = els.inspectorPanel.classList.contains("is-open");
+  els.slidesPanel.classList.remove("is-open");
+  els.inspectorPanel.classList.remove("is-open");
+  els.openSlidesPanelBtn.setAttribute("aria-expanded", "false");
+  els.openInspectorPanelBtn.setAttribute("aria-expanded", "false");
+  els.panelBackdrop.hidden = true;
+  document.body.classList.remove("mobile-panel-open");
+  if (restoreFocus) {
+    if (openSlides) els.openSlidesPanelBtn.focus();
+    else if (openInspector) els.openInspectorPanelBtn.focus();
+  }
+}
+
+function openMobilePanel(panelName) {
+  if (!window.matchMedia("(max-width: 900px)").matches) return;
+  const showSlides = panelName === "slides";
+  els.slidesPanel.classList.toggle("is-open", showSlides);
+  els.inspectorPanel.classList.toggle("is-open", !showSlides);
+  els.openSlidesPanelBtn.setAttribute("aria-expanded", String(showSlides));
+  els.openInspectorPanelBtn.setAttribute("aria-expanded", String(!showSlides));
+  els.panelBackdrop.hidden = false;
+  document.body.classList.add("mobile-panel-open");
+  const panel = showSlides ? els.slidesPanel : els.inspectorPanel;
+  requestAnimationFrame(() => panel.querySelector("[data-close-mobile-panel]")?.focus());
+}
+
 function bindKeyboard() {
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !els.panelBackdrop.hidden) {
+      event.preventDefault();
+      closeMobilePanels({ restoreFocus: true });
+      return;
+    }
     if (isTypingTarget(event.target)) return;
     const mod = event.ctrlKey || event.metaKey;
     if (mod && event.key.toLowerCase() === "z") {
@@ -641,6 +710,10 @@ function bindUi() {
   $("#exportAllBtn").addEventListener("click", exportAll);
   $("#saveProjectBtn").addEventListener("click", saveProjectJson);
   els.guideToggle.addEventListener("change", renderStage);
+  els.openSlidesPanelBtn.addEventListener("click", () => openMobilePanel("slides"));
+  els.openInspectorPanelBtn.addEventListener("click", () => openMobilePanel("inspector"));
+  els.panelBackdrop.addEventListener("click", () => closeMobilePanels({ restoreFocus: true }));
+  $$('[data-close-mobile-panel]').forEach((button) => button.addEventListener("click", () => closeMobilePanels({ restoreFocus: true })));
 
   $("#imageInput").addEventListener("change", async (event) => {
     const [file] = event.target.files;
@@ -681,7 +754,11 @@ async function init() {
   bindFields();
   bindCanvas();
   bindKeyboard();
-  window.addEventListener("resize", () => { fitStage(); renderStage(); });
+  window.addEventListener("resize", () => {
+    if (!window.matchMedia("(max-width: 900px)").matches) closeMobilePanels();
+    fitStage();
+    renderStage();
+  });
 
   try {
     const saved = await loadAutosave();

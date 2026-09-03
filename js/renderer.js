@@ -1,15 +1,41 @@
+import { isSafeImageSource } from "./model.js";
+
 const imageCache = new Map();
+const MAX_IMAGE_CACHE_ENTRIES = 12;
+
+function trimImageCache() {
+  while (imageCache.size > MAX_IMAGE_CACHE_ENTRIES) {
+    imageCache.delete(imageCache.keys().next().value);
+  }
+}
+
+export function retainImageCache(sources) {
+  const retained = new Set([...sources].filter(isSafeImageSource));
+  for (const src of imageCache.keys()) {
+    if (!retained.has(src)) imageCache.delete(src);
+  }
+  trimImageCache();
+}
 
 function loadImage(src) {
-  if (!src) return Promise.resolve(null);
-  if (imageCache.has(src)) return imageCache.get(src);
+  if (!isSafeImageSource(src)) return Promise.resolve(null);
+  if (imageCache.has(src)) {
+    const cached = imageCache.get(src);
+    imageCache.delete(src);
+    imageCache.set(src, cached);
+    return cached;
+  }
   const promise = new Promise((resolve) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => resolve(null);
+    img.onerror = () => {
+      if (imageCache.get(src) === promise) imageCache.delete(src);
+      resolve(null);
+    };
     img.src = src;
   });
   imageCache.set(src, promise);
+  trimImageCache();
   return promise;
 }
 
@@ -53,6 +79,30 @@ function segmentText(text) {
   return [...text];
 }
 
+function segmentGraphemes(text) {
+  if (globalThis.Intl?.Segmenter) {
+    const segmenter = new Intl.Segmenter("ja", { granularity: "grapheme" });
+    return [...segmenter.segment(text)].map((item) => item.segment);
+  }
+  return [...text];
+}
+
+function breakToken(ctx, token, maxWidth) {
+  const parts = [];
+  let current = "";
+  for (const grapheme of segmentGraphemes(token)) {
+    const test = current + grapheme;
+    if (current && ctx.measureText(test).width > maxWidth) {
+      parts.push(current);
+      current = grapheme;
+    } else {
+      current = test;
+    }
+  }
+  if (current || parts.length === 0) parts.push(current);
+  return parts;
+}
+
 function wrapParagraph(ctx, paragraph, maxWidth) {
   if (!paragraph) return [""];
   const tokens = segmentText(paragraph);
@@ -60,12 +110,15 @@ function wrapParagraph(ctx, paragraph, maxWidth) {
   let current = "";
 
   for (const token of tokens) {
-    const test = current + token;
-    if (current && ctx.measureText(test).width > maxWidth) {
-      lines.push(current.trimEnd());
-      current = token.trimStart();
-    } else {
-      current = test;
+    const parts = ctx.measureText(token).width > maxWidth ? breakToken(ctx, token, maxWidth) : [token];
+    for (const part of parts) {
+      const test = current + part;
+      if (current && ctx.measureText(test).width > maxWidth) {
+        lines.push(current.trimEnd());
+        current = part.trimStart();
+      } else {
+        current = test;
+      }
     }
   }
   if (current || lines.length === 0) lines.push(current.trimEnd());
@@ -90,6 +143,8 @@ function drawText(ctx, el) {
 
   const lines = buildTextLines(ctx, el.text, Math.max(10, el.w));
   const totalHeight = lines.length * lineHeight;
+  const visibleLineCount = Math.max(0, Math.floor((Math.max(0, Number(el.h) || 0) + 0.5) / lineHeight));
+  const overflows = lines.length > visibleLineCount || lines.some((line) => ctx.measureText(line).width > Math.max(10, el.w) + 0.5);
   let y = el.y;
   if (el.valign === "middle") y += Math.max(0, (el.h - totalHeight) / 2);
   if (el.valign === "bottom") y += Math.max(0, el.h - totalHeight);
@@ -98,11 +153,36 @@ function drawText(ctx, el) {
   if (ctx.textAlign === "center") x = el.x + el.w / 2;
   if (ctx.textAlign === "right") x = el.x + el.w;
 
-  for (const line of lines) {
-    if (y + lineHeight > el.y + el.h + 0.5) break;
+  for (const line of lines.slice(0, visibleLineCount)) {
     ctx.fillText(line, x, y);
     y += lineHeight;
   }
+  ctx.restore();
+  return overflows;
+}
+
+function drawTextOverflowWarning(ctx, el) {
+  const label = "文字が枠に収まりません";
+  const fontSize = 24;
+  const padX = 10;
+  const height = 42;
+  ctx.save();
+  ctx.strokeStyle = "#ffb24a";
+  ctx.lineWidth = 4;
+  ctx.setLineDash([12, 8]);
+  ctx.strokeRect(el.x, el.y, el.w, el.h);
+  ctx.setLineDash([]);
+  ctx.font = `700 ${fontSize}px sans-serif`;
+  const width = Math.ceil(ctx.measureText(label).width + padX * 2);
+  const x = Math.max(0, Math.min(el.x, ctx.canvas.width - width));
+  const preferredY = el.y >= height + 8 ? el.y - height - 8 : el.y + 8;
+  const y = Math.max(0, Math.min(preferredY, ctx.canvas.height - height));
+  ctx.fillStyle = "rgba(101, 57, 13, .94)";
+  ctx.fillRect(x, y, width, height);
+  ctx.fillStyle = "#fff1d6";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, x + padX, y + height / 2);
   ctx.restore();
 }
 
@@ -218,7 +298,7 @@ function drawGuides(ctx, width, height, ratio) {
 }
 
 export async function renderSlide(canvas, slide, size, options = {}) {
-  const { selectedId = null, showGuides = false, ratio = "landscape" } = options;
+  const { selectedId = null, showGuides = false, showOverflowWarnings = false, ratio = "landscape" } = options;
   if (canvas.width !== size.width) canvas.width = size.width;
   if (canvas.height !== size.height) canvas.height = size.height;
   const ctx = canvas.getContext("2d", { alpha: false });
@@ -228,17 +308,22 @@ export async function renderSlide(canvas, slide, size, options = {}) {
   const images = slide.elements.filter((el) => el.type === "image");
   await Promise.all(images.map((el) => loadImage(el.src)));
 
+  const overflowingTextElements = [];
   for (const el of slide.elements) {
     if (el.type === "shape") drawShape(ctx, el);
     else if (el.type === "image") await drawImage(ctx, el);
-    else if (el.type === "text") drawText(ctx, el);
+    else if (el.type === "text" && drawText(ctx, el)) overflowingTextElements.push(el);
   }
 
+  if (showOverflowWarnings) {
+    for (const el of overflowingTextElements) drawTextOverflowWarning(ctx, el);
+  }
   if (showGuides) drawGuides(ctx, size.width, size.height, ratio);
   if (selectedId) {
     const selected = slide.elements.find((el) => el.id === selectedId);
     if (selected) drawSelection(ctx, selected, 1);
   }
+  return { overflowTextIds: overflowingTextElements.map((el) => el.id) };
 }
 
 export function pointToCanvas(canvas, clientX, clientY) {

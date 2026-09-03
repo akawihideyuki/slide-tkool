@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="YouTube通常動画・Shorts向けのスライド画像をブラウザで作るツール">
   <title>Slide Tkool</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%234f7cff'/%3E%3Cpath d='M22 17h20v30H22z' fill='white'/%3E%3Cpath d='M27 25h10M27 31h10M27 37h7' stroke='%234f7cff' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
       <div class="brand">
-        <strong>Slide Tkool</strong>
+        <h1>Slide Tkool</h1>
         <span>YouTube Slide Maker</span>
       </div>
 
@@ -20,7 +21,7 @@
         <button class="segmented" data-ratio="portrait" type="button">9:16 Shorts</button>
       </div>
 
-      <div class="topbar-group">
+      <div class="topbar-group project-actions">
         <button id="undoBtn" class="button ghost" type="button" title="元に戻す (Ctrl+Z)">↶</button>
         <button id="redoBtn" class="button ghost" type="button" title="やり直す (Ctrl+Y)">↷</button>
         <button id="saveProjectBtn" class="button ghost" type="button">JSON保存</button>
@@ -30,8 +31,14 @@
       </div>
     </header>
 
+    <button id="panelBackdrop" class="panel-backdrop" type="button" aria-label="パネルを閉じる" hidden></button>
+
     <main class="workspace">
-      <aside class="sidebar slides-panel" aria-label="スライド一覧">
+      <aside id="slidesPanel" class="sidebar slides-panel" aria-label="スライド一覧">
+        <div class="mobile-panel-heading">
+          <strong>スライド</strong>
+          <button class="icon-button" type="button" data-close-mobile-panel aria-label="スライド一覧を閉じる">×</button>
+        </div>
         <div class="panel-header">
           <div>
             <span class="eyebrow">SLIDES</span>
@@ -48,6 +55,10 @@
 
       <section class="editor-area">
         <div class="editor-toolbar">
+          <div class="mobile-panel-tabs" role="group" aria-label="編集パネル">
+            <button id="openSlidesPanelBtn" class="button ghost" type="button" aria-controls="slidesPanel" aria-expanded="false">スライド</button>
+            <button id="openInspectorPanelBtn" class="button ghost" type="button" aria-controls="inspectorPanel" aria-expanded="false">編集設定</button>
+          </div>
           <div class="toolbar-cluster">
             <button id="addTitleBtn" class="tool-button" type="button"><span>Ｔ</span>タイトル</button>
             <button id="addTextBtn" class="tool-button" type="button"><span>¶</span>本文</button>
@@ -68,7 +79,11 @@
         </div>
       </section>
 
-      <aside class="sidebar inspector-panel" aria-label="編集設定">
+      <aside id="inspectorPanel" class="sidebar inspector-panel" aria-label="編集設定">
+        <div class="mobile-panel-heading">
+          <strong>編集設定</strong>
+          <button class="icon-button" type="button" data-close-mobile-panel aria-label="編集設定を閉じる">×</button>
+        </div>
         <section class="inspector-section">
           <div class="panel-header compact">
             <div>
@@ -115,6 +130,7 @@
 
           <div id="textInspector" class="inspector-fields" hidden>
             <label class="field-label">テキスト<textarea id="textContent" rows="4"></textarea></label>
+            <p id="textOverflowWarning" class="field-warning" role="status" hidden>文字が枠に収まっていません。文字数・文字サイズ・枠の高さを調整してください。</p>
             <div class="field-row two-cols">
               <label>文字サイズ<input id="fontSize" type="number" min="12" max="240" step="1"></label>
               <label>文字色<input id="textColor" type="color"></label>

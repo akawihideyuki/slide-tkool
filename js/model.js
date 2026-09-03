@@ -4,6 +4,20 @@ export const CANVAS_SIZES = Object.freeze({
 });
 
 const FONT_STACK = '"Noto Sans JP", "Yu Gothic", "Meiryo", sans-serif';
+const ELEMENT_TYPES = new Set(["text", "image", "shape"]);
+
+export function isSafeImageSource(src) {
+  return typeof src === "string" && /^data:image\/[a-z0-9.+-]+(?:;[^,]*)?,/i.test(src);
+}
+
+function finiteNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function clampNumber(value, min, max, fallback) {
+  return Math.max(min, Math.min(max, finiteNumber(value, fallback)));
+}
 
 export function uid(prefix = "id") {
   if (globalThis.crypto?.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
@@ -241,10 +255,49 @@ export function normalizeProject(raw) {
   raw.version = 1;
   raw.slides = raw.slides.filter((slide) => slide && Array.isArray(slide.elements));
   if (raw.slides.length === 0) raw.slides.push(createSlide(raw.ratio));
-  for (const slide of raw.slides) {
+  const size = getCanvasSize(raw.ratio);
+
+  for (const [slideIndex, slide] of raw.slides.entries()) {
     slide.id ||= uid("slide");
-    slide.background ||= { type: "solid", color1: "#111827", color2: "#111827", angle: 135 };
-    for (const el of slide.elements) el.id ||= uid(el.type || "element");
+    if (!slide.background || typeof slide.background !== "object") {
+      slide.background = { type: "solid", color1: "#111827", color2: "#111827", angle: 135 };
+    }
+    slide.background.type = slide.background.type === "solid" ? "solid" : "gradient";
+    slide.background.color1 = typeof slide.background.color1 === "string" ? slide.background.color1 : "#111827";
+    slide.background.color2 = typeof slide.background.color2 === "string" ? slide.background.color2 : slide.background.color1;
+    slide.background.angle = finiteNumber(slide.background.angle, 135);
+
+    for (const [elementIndex, el] of slide.elements.entries()) {
+      if (!el || typeof el !== "object" || !ELEMENT_TYPES.has(el.type)) {
+        throw new Error(`スライド${slideIndex + 1}の要素${elementIndex + 1}は対応していない形式です。`);
+      }
+
+      el.id ||= uid(el.type);
+      el.x = finiteNumber(el.x, 0);
+      el.y = finiteNumber(el.y, 0);
+      el.w = clampNumber(el.w, 10, size.width * 2, 100);
+      el.h = clampNumber(el.h, 10, size.height * 2, 100);
+
+      if (el.type === "image") {
+        if (!isSafeImageSource(el.src)) {
+          throw new Error(`スライド${slideIndex + 1}の画像${elementIndex + 1}に外部URLまたは無効な画像データが含まれています。画像はこのツールから追加し直してください。`);
+        }
+        el.fit = el.fit === "contain" ? "contain" : "cover";
+      } else if (el.type === "text") {
+        el.text = typeof el.text === "string" ? el.text : "";
+        el.fontSize = clampNumber(el.fontSize, 12, 240, 48);
+        el.fontFamily = typeof el.fontFamily === "string" && el.fontFamily.length <= 200 ? el.fontFamily : FONT_STACK;
+        el.fontWeight = ["400", "600", "700", "900"].includes(String(el.fontWeight)) ? String(el.fontWeight) : "400";
+        el.color = typeof el.color === "string" ? el.color : "#ffffff";
+        el.align = ["left", "center", "right"].includes(el.align) ? el.align : "left";
+        el.valign = ["top", "middle", "bottom"].includes(el.valign) ? el.valign : "top";
+        el.lineHeight = clampNumber(el.lineHeight, 0.8, 3, 1.22);
+      } else {
+        el.color = typeof el.color === "string" ? el.color : "#111827";
+        el.opacity = clampNumber(el.opacity, 0, 1, 0.82);
+        el.radius = clampNumber(el.radius, 0, Math.max(size.width, size.height), 0);
+      }
+    }
   }
   raw.updatedAt = new Date().toISOString();
   return raw;

@@ -24,6 +24,10 @@ jobs:
           node --check js/app.js
           node --check js/resize.js
           node --check tests/static-check.mjs
+          node --check tests/model-check.mjs
 
       - name: Check HTML and JavaScript references
         run: node tests/static-check.mjs
+
+      - name: Check project data normalization
+        run: node tests/model-check.mjs

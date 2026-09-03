@@ -11,6 +11,7 @@ const requiredFiles = [
   "js/renderer.js",
   "js/storage.js",
   "js/resize.js",
+  "tests/model-check.mjs",
 ];
 
 const failures = [];
@@ -20,7 +21,7 @@ for (const file of requiredFiles) {
 }
 
 const html = readFileSync(resolve(root, "index.html"), "utf8");
-const scriptsToScan = ["js/app.js", "js/resize.js"];
+const scriptsToScan = ["js/app.js", "js/model.js", "js/renderer.js", "js/storage.js", "js/resize.js"];
 
 for (const scriptPath of scriptsToScan) {
   const fullPath = resolve(root, scriptPath);
@@ -49,6 +50,9 @@ for (const script of ["js/app.js", "js/resize.js"]) {
 
 if (!html.includes('data-ratio="landscape"')) failures.push("Landscape ratio control is missing.");
 if (!html.includes('data-ratio="portrait"')) failures.push("Portrait ratio control is missing.");
+if (!html.includes('id="openSlidesPanelBtn"')) failures.push("Responsive slide panel control is missing.");
+if (!html.includes('id="openInspectorPanelBtn"')) failures.push("Responsive inspector panel control is missing.");
+if (!html.includes('id="textOverflowWarning"')) failures.push("Text overflow warning is missing.");
 
 if (failures.length) {
   console.error("Static checks failed:\n" + failures.map((item) => `- ${item}`).join("\n"));

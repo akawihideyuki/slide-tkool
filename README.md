@@ -26,6 +26,8 @@ YouTube動画向けの静止画スライドを、ブラウザ上で素早く作�
 - IndexedDBへの自動保存・復元
 - Undo / Redo
 - キーボードによる位置微調整
+- 画面幅900px以下でのスライド一覧・編集設定パネル切り替え
+- テキストが枠に収まらない場合の編集画面警告
 
 > Shortsの「安全領域ガイド」はYouTube UIの固定仕様を保証するものではなく、編集時の目安です。端末やUI変更によって表示領域は変わる可能性があります。
 
@@ -59,6 +61,10 @@ python -m http.server 8000
 
 入力欄を編集中は、上記の要素操作ショートカットを抑止します。
 
+## プロジェクトJSONの画像
+
+画像はプロジェクトJSON内へ `data:image/...` 形式で埋め込みます。安全性とPNG出力の互換性を保つため、読み込んだJSONに外部URLの画像が含まれている場合は読込を中止します。元画像をこのツールから追加し直してください。
+
 ## 構成
 
 ```text
@@ -68,7 +74,8 @@ slide-tkool/
 ├─ README.md
 ├─ AGENTS.md
 ├─ tests/
-│  └─ static-check.mjs
+│  ├─ static-check.mjs
+│  └─ model-check.mjs
 └─ js/
    ├─ app.js       # UI・操作・履歴・入出力
    ├─ model.js     # Project / Slide / Element データモデル
@@ -85,4 +92,9 @@ slide-tkool/
 
 ## 検証
 
-GitHub Actionsの `Validate` workflowで、JavaScriptの構文チェックとHTML/JavaScript参照の静的整合チェックを実行します。
+GitHub Actionsの `Validate` workflowで、JavaScriptの構文チェック、HTML/JavaScript参照の静的整合チェック、プロジェクトJSONの正規化チェックを実行します。ローカルでは次を実行できます。
+
+```bash
+node tests/static-check.mjs
+node tests/model-check.mjs
+```
