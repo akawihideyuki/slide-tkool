@@ -21,6 +21,9 @@ for (const file of requiredFiles) {
 }
 
 const html = readFileSync(resolve(root, "index.html"), "utf8");
+const readme = readFileSync(resolve(root, "README.md"), "utf8");
+const appSource = readFileSync(resolve(root, "js/app.js"), "utf8");
+const launcher = readFileSync(resolve(root, "起動.bat"), "utf8");
 const scriptsToScan = ["js/app.js", "js/model.js", "js/renderer.js", "js/storage.js", "js/resize.js"];
 
 for (const scriptPath of scriptsToScan) {
@@ -53,6 +56,11 @@ if (!html.includes('data-ratio="portrait"')) failures.push("Portrait ratio contr
 if (!html.includes('id="openSlidesPanelBtn"')) failures.push("Responsive slide panel control is missing.");
 if (!html.includes('id="openInspectorPanelBtn"')) failures.push("Responsive inspector panel control is missing.");
 if (!html.includes('id="textOverflowWarning"')) failures.push("Text overflow warning is missing.");
+if (!html.includes("<title>スライドつく～る</title>")) failures.push("Public page title is not using the Japanese product name.");
+if (!html.includes("<h1>スライドつく～る</h1>")) failures.push("Public app heading is not using the Japanese product name.");
+if (!readme.startsWith("# スライドつく～る")) failures.push("README heading is not using the Japanese product name.");
+if (!appSource.includes("`スライドつく～る_${project.ratio}_")) failures.push("Project download filename is not using the Japanese product name.");
+if (!launcher.includes("スライドつく～るを起動しています")) failures.push("Launcher message is not using the Japanese product name.");
 
 if (failures.length) {
   console.error("Static checks failed:\n" + failures.map((item) => `- ${item}`).join("\n"));

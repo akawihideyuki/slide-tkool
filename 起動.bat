@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
 
@@ -23,11 +24,11 @@ if not defined PYTHON_CMD (
 )
 
 echo.
-echo slide-tkool is starting...
+echo スライドつく～るを起動しています...
 echo Open: http://127.0.0.1:%PORT%/
 echo.
-echo Keep this window open while using slide-tkool.
-echo Close this window to stop the local server.
+echo スライドつく～るの使用中は、このウィンドウを開いたままにしてください。
+echo このウィンドウを閉じると、ローカルサーバーが停止します。
 echo.
 
 start "" powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Milliseconds 900; Start-Process 'http://127.0.0.1:%PORT%/'"

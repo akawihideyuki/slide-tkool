@@ -436,7 +436,7 @@ async function exportAll() {
 
 function saveProjectJson() {
   const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
-  downloadBlob(blob, `slide-tkool_${project.ratio}_${new Date().toISOString().slice(0, 10)}.json`);
+  downloadBlob(blob, `スライドつく～る_${project.ratio}_${new Date().toISOString().slice(0, 10)}.json`);
   showToast("プロジェクトJSONを保存しました。");
 }
 
